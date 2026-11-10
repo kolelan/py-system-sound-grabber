@@ -1,96 +1,92 @@
 # py-system-sound-grabber
 
-Запись системного звука Windows: то, что сейчас играет (фильм, плеер, браузер), без блокировки воспроизведения.
+Запись звука на Windows: системный вывод (то, что играет) и микрофон. WAV пишется сразу на диск, без накопления всей сессии в RAM.
 
-## Актуальный путь: WASAPI loopback
-
-Основная реализация использует [`PyAudioWPatch`](https://github.com/s0d3s/PyAudioWPatch) и пишет WAV **сразу на диск** (без накопления всей записи в RAM). Stereo Mix и Virtual Cable не нужны.
-
-| Файл | Роль |
-| --- | --- |
-| `recorder.py` | Ядро: список loopback-устройств, старт/пауза/стоп, инкрементальная запись |
-| `grab.py` | CLI |
-| `grab_gui.py` | GUI (tkinter) |
-
-### Установка
+## Установка
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### CLI
+Зависимость: [`PyAudioWPatch`](https://github.com/s0d3s/PyAudioWPatch) (WASAPI + обычный ввод).
+
+## Системный звук (WASAPI loopback)
+
+Пишет то, что сейчас играет (фильм, плеер, браузер), без Stereo Mix и без блокировки воспроизведения.
+
+| Файл | Роль |
+| --- | --- |
+| `recorder.py` | Ядро loopback |
+| `grab.py` | CLI |
+| `grab_gui.py` | GUI |
 
 ```bash
-# список устройств вывода в режиме loopback
 python grab.py --list
-
-# 30 секунд в файл
 python grab.py -o capture.wav -d 30
-
-# до Ctrl+C, конкретное устройство
-python grab.py -o capture.wav -i 20
-```
-
-### GUI
-
-```bash
 python grab_gui.py
 ```
 
-Выберите loopback (по умолчанию — текущие динамики/наушники), укажите файл и нажмите **Старт**. Во время записи обычное воспроизведение не прерывается.
+Выбирайте loopback **того** устройства, на которое идёт звук (`[default]` в `--list`). Неактивный endpoint может «зависнуть» на чтении до стопа.
+
+## Микрофон
+
+| Файл | Роль |
+| --- | --- |
+| `mic_recorder.py` | Ядро записи с входа |
+| `mic_grab.py` | CLI |
+| `mic_grab_gui.py` | GUI |
+
+```bash
+python mic_grab.py --list
+python mic_grab.py -o voice.wav -d 10
+python mic_grab_gui.py
+```
+
+Loopback-устройства в списке микрофонов не показываются.
 
 ## Цель
 
 | Нужно | Не нужно |
 | --- | --- |
-| Звук приложений и ОС | Голос с микрофона (старые эксперименты) |
-| Воспроизведение не прерывается | Обход DRM |
-| Фоновая запись в WAV | Сервис/трей (пока нет) |
+| Системный звук и/или микрофон | Обход DRM |
+| Воспроизведение не прерывается при loopback | Сервис/трей (пока нет) |
+| Фоновая запись в WAV | |
 
-## Как устроен loopback на Windows
+## Как устроен loopback
 
-Приложения отдают звук в playback-устройство. WASAPI умеет слушать тот же endpoint в режиме **loopback** — виртуальное входное устройство вида `Динамики … [Loopback]`.
+Приложения отдают звук в playback-устройство. WASAPI умеет слушать тот же endpoint в режиме **loopback** — виртуальный вход вида `Динамики … [Loopback]`.
 
-Альтернативы (исторические прототипы в репо):
-
-1. **Stereo Mix / What U Hear** — виртуальный вход драйвера, часто отключён.
-2. **VB-Audio Virtual Cable** — отдельная установка, иногда требует смены устройства вывода.
+Исторические альтернативы (прототипы в репо): Stereo Mix, VB-Audio Virtual Cable.
 
 ## Карта старых прототипов
 
-| Файл | Назначение | Источник |
+| Файл | Назначение |
+| --- | --- |
+| `proto1.py` / `record-ui.py` / `mic-rec.py` | Ранние опыты (часто mic) |
+| `stereo-mix.py` / `sounddevice.py` | Stereo Mix / кабель по имени |
+| `sound-gui.py` / `start-grab.py` | GUI со Stereo Mix |
+
+Для новой работы: `grab*` (система) и `mic_grab*` (микрофон).
+
+## Сравнение
+
+| Подход | Файлы | Зрелость |
 | --- | --- | --- |
-| `proto1.py` | Первый класс-рекордер | устройство по умолчанию |
-| `mic-rec.py` | Запись с микрофона, стоп по пробелу | микрофон |
-| `stereo-mix.py` | Поиск Stereo Mix по имени | Stereo Mix |
-| `sounddevice.py` | То же через sounddevice/soundfile | Stereo Mix / кабель |
-| `record-ui.py` | Минимальный GUI | микрофон |
-| `sound-gui.py` / `start-grab.py` | GUI со Stereo Mix | выбор устройства |
-
-Для новой работы используйте `grab.py` / `grab_gui.py`. Старые скрипты оставлены как история экспериментов.
-
-## Сравнение подходов
-
-| Подход | Файлы | Stereo Mix | Зрелость |
-| --- | --- | --- | --- |
-| **WASAPI loopback** | `recorder.py`, `grab.py`, `grab_gui.py` | не нужен | **основной** |
-| Stereo Mix по имени | `stereo-mix.py`, `sound-gui.py`, `start-grab.py` | нужен | прототип |
-| sounddevice + имя устройства | `sounddevice.py` | / кабель | прототип |
-| Default input (часто mic) | `proto1.py`, `record-ui.py`, `mic-rec.py` | — | эксперименты |
+| WASAPI loopback | `recorder.py`, `grab.py`, `grab_gui.py` | основной |
+| Микрофон | `mic_recorder.py`, `mic_grab.py`, `mic_grab_gui.py` | основной |
+| Stereo Mix / sounddevice | старые скрипты | прототип |
 
 ## Ограничения
 
-- Только Windows (WASAPI).
-- Нет иконки в трее / автозапуска как службы.
-- Только WAV PCM; DRM-контент может давать тишину в loopback.
-- Выбирайте loopback **того** устройства, на которое сейчас идёт звук (`grab.py --list`, пункт `[default]`). Неактивный endpoint может «зависнуть» на чтении до стопа.
+- Ориентир — Windows.
+- Нет иконки в трее / hotkey.
+- Только WAV PCM; DRM может давать тишину в loopback.
 
 ## Возможное развитие
 
 - Иконка в трее и hotkey старт/стоп
-- Выбор формата (FLAC/MP3) поверх сырого потока
-- Автовыбор loopback при смене устройства вывода Windows
-- Быстрый «тест» неактивных endpoint’ов (таймаут open/read), чтобы не предлагать их в GUI
+- Одновременная запись mic + system (два трека / микс)
+- FLAC/MP3 поверх сырого потока
 
 ## Лицензия и использование
 
