@@ -1,2 +1,6 @@
 .idea/
- 2*.wav
+__pycache__/
+*.py[cod]
+*.wav
+.venv/
+venv/
