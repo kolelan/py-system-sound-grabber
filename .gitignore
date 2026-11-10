@@ -2,5 +2,10 @@
 __pycache__/
 *.py[cod]
 *.wav
+*.flac
+*.ogg
+*.mp3
+mic_segments/
+conference_captures/
 .venv/
 venv/
