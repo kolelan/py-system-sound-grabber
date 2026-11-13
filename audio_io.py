@@ -2,13 +2,57 @@
 
 from __future__ import annotations
 
+import re
 import wave
+from datetime import datetime
 from pathlib import Path
 
 import numpy as np
 import soundfile as sf
 
 SUPPORTED_FORMATS: tuple[str, ...] = ("wav", "flac", "ogg", "mp3")
+
+# суффикс времени в имени: 20261113-13-58-00
+_TS_SUFFIX_RE = re.compile(r"(?:^|-)(\d{8}-\d{2}-\d{2}-\d{2})$")
+
+
+def timestamp_slug(when: datetime | None = None) -> str:
+    """Метка времени для имени файла: YYYYMMDD-HH-MM-SS."""
+    return (when or datetime.now()).strftime("%Y%m%d-%H-%M-%S")
+
+
+def with_audio_extension(filename: str, fmt: str) -> str:
+    """Оставляет имя (stem), подставляет расширение формата."""
+    stem = Path(filename).name
+    stem = Path(stem).stem or "recording"
+    return f"{stem}.{fmt.lower().lstrip('.')}"
+
+
+def stamped_filename(prefix: str, fmt: str, when: datetime | None = None, seq: int | None = None) -> str:
+    """
+    Имя вида prefix-YYYYMMDD-HH-MM-SS.ext
+    или prefix-YYYYMMDD-HH-MM-SS-001.ext при seq.
+    """
+    base = f"{prefix}-{timestamp_slug(when)}"
+    if seq is not None:
+        base = f"{base}-{seq:03d}"
+    return with_audio_extension(base, fmt)
+
+
+def refresh_timestamp_in_filename(filename: str, fmt: str | None = None) -> str:
+    """
+    Обновляет/добавляет YYYYMMDD-HH-MM-SS в имени файла.
+    Префикс до метки времени сохраняется (например conference-...).
+    """
+    name = Path(filename).name
+    stem = Path(name).stem or "recording"
+    ext = (fmt or Path(name).suffix.lstrip(".") or "wav").lower()
+    match = _TS_SUFFIX_RE.search(stem)
+    if match:
+        prefix = stem[: match.start(1)].rstrip("-") or "recording"
+    else:
+        prefix = stem
+    return stamped_filename(prefix, ext)
 
 
 def to_mono_float(raw: bytes, channels: int) -> np.ndarray:

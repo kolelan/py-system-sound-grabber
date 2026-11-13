@@ -5,14 +5,13 @@ from __future__ import annotations
 import threading
 from collections import deque
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
 from typing import Callable, Optional
 
 import numpy as np
 import pyaudiowpatch as pyaudio
 
-from audio_io import SUPPORTED_FORMATS, to_mono_float, write_audio
+from audio_io import SUPPORTED_FORMATS, stamped_filename, to_mono_float, write_audio
 from mic_recorder import MicDevice, MicrophoneRecorder
 from recorder import RecorderError
 
@@ -380,7 +379,7 @@ class SegmentedMicRecorder:
             self._saved_count += 1
             count = self._saved_count
 
-        path = out_dir / f"mic_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{count:03d}.{fmt}"
+        path = out_dir / stamped_filename("mic", fmt, seq=count)
         try:
             write_audio(path, audio, device.sample_rate, fmt)
         except Exception as exc:  # noqa: BLE001

@@ -16,14 +16,19 @@ import queue
 import threading
 import wave
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
 from typing import Callable, Literal, Optional
 
 import numpy as np
 import pyaudiowpatch as pyaudio
 
-from audio_io import SUPPORTED_FORMATS, resample_mono, to_mono_float, write_audio
+from audio_io import (
+    SUPPORTED_FORMATS,
+    resample_mono,
+    stamped_filename,
+    to_mono_float,
+    write_audio,
+)
 from mic_recorder import MicDevice, MicrophoneRecorder
 from mic_recorder_ext import NoiseGateWithPadding, VoicePresenceEQ
 from recorder import LoopbackDevice, RecorderError
@@ -35,7 +40,7 @@ WriteMode = Literal["continuous", "segments"]
 @dataclass
 class ConferenceSettings:
     output_dir: Path = Path("conference_captures")
-    continuous_path: Path = Path("conference_captures/conference.wav")
+    continuous_path: Path = Path("conference_captures") / "conference.wav"
     write_mode: WriteMode = "continuous"
     buffer_seconds: float = 30.0
     mix_mode: MixMode = "stereo"
@@ -490,7 +495,7 @@ class ConferenceRecorder:
             self._saved_count += 1
             count = self._saved_count
 
-        path = out_dir / f"conf_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{count:03d}.{fmt}"
+        path = out_dir / stamped_filename("conf", fmt, seq=count)
         try:
             write_audio(path, audio, self._sample_rate, fmt)
         except Exception as exc:  # noqa: BLE001

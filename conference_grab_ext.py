@@ -17,7 +17,11 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
-from audio_io import SUPPORTED_FORMATS
+from audio_io import (
+    SUPPORTED_FORMATS,
+    refresh_timestamp_in_filename,
+    with_audio_extension,
+)
 from conference_recorder_ext import ConferenceLevel, ConferenceRecorder, ConferenceSettings
 from mic_recorder import MicDevice
 from recorder import LoopbackDevice, RecorderError
@@ -27,7 +31,7 @@ class ConferenceGrabExtApp:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
         self.root.title("Конференция — система + микрофон")
-        self.root.geometry("680x680")
+        self.root.geometry("680x720")
 
         self.settings = ConferenceSettings()
         self.recorder = ConferenceRecorder(
@@ -44,9 +48,8 @@ class ConferenceGrabExtApp:
         self.mix_var = tk.StringVar(value="stereo")
         self.format_var = tk.StringVar(value="wav")
         self.folder_var = tk.StringVar(value=str(Path("conference_captures").resolve()))
-        self.file_var = tk.StringVar(
-            value=str(Path("conference_captures/conference.wav").resolve())
-        )
+        self.file_var = tk.StringVar(value="conference.wav")
+        self.full_path_var = tk.StringVar(value="")
         self.buffer_var = tk.StringVar(value="30")
         self.gate_enable_var = tk.BooleanVar(value=False)
         self.gate_var = tk.DoubleVar(value=-45.0)
@@ -60,9 +63,11 @@ class ConferenceGrabExtApp:
 
         self._last_level: ConferenceLevel | None = None
         self._pending_saved: Path | None = None
+        self._syncing_paths = False
 
         self._build_ui()
         self.refresh_devices()
+        self._update_full_path()
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
         self._poll()
 
@@ -98,14 +103,24 @@ class ConferenceGrabExtApp:
             out, text="Сегменты в папку", variable=self.mode_var, value="segments"
         ).grid(row=0, column=1, sticky="w", padx=6, pady=2)
 
-        ttk.Label(out, text="Файл:").grid(row=1, column=0, sticky="w", padx=6, pady=4)
-        ttk.Entry(out, textvariable=self.file_var).grid(row=1, column=1, sticky="we", padx=6, pady=4)
-        ttk.Button(out, text="Обзор…", command=self.choose_file).grid(row=1, column=2, padx=6)
+        ttk.Label(out, text="Папка:").grid(row=1, column=0, sticky="w", padx=6, pady=4)
+        ttk.Entry(out, textvariable=self.folder_var).grid(row=1, column=1, sticky="we", padx=6, pady=4)
+        ttk.Button(out, text="Обзор…", command=self.choose_folder).grid(row=1, column=2, padx=6)
 
-        ttk.Label(out, text="Папка:").grid(row=2, column=0, sticky="w", padx=6, pady=4)
-        ttk.Entry(out, textvariable=self.folder_var).grid(row=2, column=1, sticky="we", padx=6, pady=4)
-        ttk.Button(out, text="Обзор…", command=self.choose_folder).grid(row=2, column=2, padx=6)
+        ttk.Label(out, text="Файл:").grid(row=2, column=0, sticky="w", padx=6, pady=4)
+        ttk.Entry(out, textvariable=self.file_var).grid(
+            row=2, column=1, columnspan=2, sticky="we", padx=6, pady=4
+        )
+
+        ttk.Label(out, text="Полный путь:").grid(row=3, column=0, sticky="w", padx=6, pady=4)
+        ttk.Entry(out, textvariable=self.full_path_var, state="readonly").grid(
+            row=3, column=1, columnspan=2, sticky="we", padx=6, pady=4
+        )
         out.columnconfigure(1, weight=1)
+
+        self.folder_var.trace_add("write", lambda *_: self._update_full_path())
+        self.file_var.trace_add("write", lambda *_: self._on_filename_edited())
+        self.format_var.trace_add("write", lambda *_: self._on_format_changed())
 
         opts = ttk.LabelFrame(self.root, text="Параметры")
         opts.pack(fill="x", padx=12, pady=4)
@@ -202,14 +217,6 @@ class ConferenceGrabExtApp:
         self.sys_var.set(next((str(d) for d in self.loopbacks if d.index == default_sys.index), sys_labels[0] if sys_labels else ""))
         self.mic_var.set(next((str(d) for d in self.mics if d.index == default_mic.index), mic_labels[0] if mic_labels else ""))
 
-    def choose_file(self) -> None:
-        path = filedialog.asksaveasfilename(
-            defaultextension=".wav",
-            filetypes=[("Audio", "*.wav *.flac *.ogg *.mp3"), ("All", "*.*")],
-        )
-        if path:
-            self.file_var.set(path)
-
     def choose_folder(self) -> None:
         path = filedialog.askdirectory(initialdir=self.folder_var.get() or ".")
         if path:
@@ -219,6 +226,55 @@ class ConferenceGrabExtApp:
         folder = Path(self.folder_var.get())
         folder.mkdir(parents=True, exist_ok=True)
         os.startfile(str(folder.resolve()))
+
+    def _on_format_changed(self) -> None:
+        if self._syncing_paths:
+            return
+        fmt = self.format_var.get().strip().lower() or "wav"
+        name = self.file_var.get().strip() or "conference.wav"
+        self._syncing_paths = True
+        try:
+            self.file_var.set(with_audio_extension(name, fmt))
+        finally:
+            self._syncing_paths = False
+        self._update_full_path()
+
+    def _on_filename_edited(self) -> None:
+        if self._syncing_paths:
+            return
+        # если пользователь вставил полный путь — разложим на папку + имя
+        raw = self.file_var.get().strip()
+        if raw and (("/" in raw) or ("\\" in raw)):
+            path = Path(raw)
+            self._syncing_paths = True
+            try:
+                if path.parent.as_posix() not in (".", ""):
+                    self.folder_var.set(str(path.parent))
+                fmt = self.format_var.get().strip().lower() or "wav"
+                self.file_var.set(with_audio_extension(path.name, fmt))
+            finally:
+                self._syncing_paths = False
+        self._update_full_path()
+
+    def _base_filename(self) -> str:
+        fmt = self.format_var.get().strip().lower() or "wav"
+        name = self.file_var.get().strip() or "conference.wav"
+        return with_audio_extension(Path(name).name, fmt)
+
+    def _update_full_path(self) -> None:
+        """Шаблонный путь (без метки времени). Метка появится в имени при Старт."""
+        folder = self.folder_var.get().strip()
+        if not folder:
+            self.full_path_var.set("")
+            return
+        self.full_path_var.set(str((Path(folder) / self._base_filename()).resolve()))
+
+    def _stamped_continuous_path(self) -> Path:
+        """Папка + имя с YYYYMMDD-HH-MM-SS перед расширением (на момент старта)."""
+        folder = Path(self.folder_var.get().strip() or ".")
+        fmt = self.format_var.get().strip().lower() or "wav"
+        stamped = refresh_timestamp_in_filename(self._base_filename(), fmt)
+        return folder / stamped
 
     @staticmethod
     def _index_from_label(label: str) -> int | None:
@@ -234,11 +290,18 @@ class ConferenceGrabExtApp:
         except ValueError as exc:
             raise RecorderError("Некорректные числовые параметры") from exc
 
+        fmt = self.format_var.get().strip().lower()
         self.settings.write_mode = self.mode_var.get()  # type: ignore[assignment]
         self.settings.mix_mode = self.mix_var.get()  # type: ignore[assignment]
-        self.settings.audio_format = self.format_var.get().strip().lower()
+        self.settings.audio_format = fmt
         self.settings.output_dir = Path(self.folder_var.get())
-        self.settings.continuous_path = Path(self.file_var.get())
+        if self.settings.write_mode == "continuous":
+            # базовое имя в поле не трогаем; метку времени вшиваем только в путь записи
+            stamped_path = self._stamped_continuous_path()
+            self.settings.continuous_path = stamped_path
+            self.full_path_var.set(str(stamped_path.resolve()))
+        else:
+            self._update_full_path()
         self.settings.buffer_seconds = buffer_seconds
         self.settings.use_gate = bool(self.gate_enable_var.get())
         self.settings.noise_gate_db = float(self.gate_var.get())
@@ -261,9 +324,14 @@ class ConferenceGrabExtApp:
         self.stop_btn.config(state="normal")
         mode = self.settings.write_mode
         self.status_var.set(f"Запись ({mode}): {sys_dev.name} + {mic_dev.name}")
+        target = (
+            self.settings.continuous_path
+            if mode == "continuous"
+            else self.settings.output_dir
+        )
         self._log(
             f"Старт [{mode}/{self.settings.mix_mode}/{self.settings.audio_format}] "
-            f"sys={sys_dev.index} mic={mic_dev.index}"
+            f"→ {target} · sys={sys_dev.index} mic={mic_dev.index}"
         )
 
     def stop_recording(self) -> None:
