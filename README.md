@@ -1,99 +1,44 @@
 # py-system-sound-grabber
 
-Запись звука на Windows: системный вывод, микрофон и конференция (система + mic). Сегменты и длинные файлы пишутся на диск без удержания всей сессии в RAM (для continuous WAV).
+Запись звука на Windows и локальное распознавание речи (GigaAM, Whisper, Vosk).
 
-## Установка
+Типовой путь: **записали конференцию/микрофон → получили WAV → распознали текст → при желании доработали через DeepSeek**.
+
+## Быстрый старт
 
 ```bash
 pip install -r requirements.txt
 ```
 
-Зависимости: [`PyAudioWPatch`](https://github.com/s0d3s/PyAudioWPatch), `numpy`, `soundfile`.
-
-## Системный звук (WASAPI loopback)
-
-| Файл | Роль |
-| --- | --- |
-| `recorder.py` | Ядро loopback |
-| `grab.py` | CLI |
-| `grab_gui.py` | GUI |
-
-```bash
-python grab.py --list
-python grab.py -o capture.wav -d 30
-python grab_gui.py
-```
-
-Выбирайте loopback **того** устройства, на которое идёт звук (`[default]`).
-
-## Микрофон
-
-| Файл | Роль |
-| --- | --- |
-| `mic_recorder.py` | Ядро |
-| `mic_grab.py` | CLI |
-| `mic_grab_gui.py` | GUI |
-
-```bash
-python mic_grab.py --list
-python mic_grab.py -o voice.wav -d 10
-python mic_grab_gui.py
-```
-
-### Микрофон ext
-
-`mic_grab_ext.py` / `mic_recorder_ext.py` — эксперимент, базовый mic не ломает:
-
-- папка сегментов, уровень, voice boost
-- буфер N сек → файл
-- noise gate + **pre/post-roll (мс до и после речи)**
-- форматы: `wav` / `flac` / `ogg` / `mp3`
-
-```bash
-python mic_grab_ext.py
-```
-
-## Конференция: система + микрофон
-
-Сценарий созвона: слышите собеседников (loopback) и говорите в микрофон.
-
-| Файл | Роль |
-| --- | --- |
-| `conference_recorder_ext.py` | Ядро |
-| `conference_grab_ext.py` | GUI |
-
-```bash
-python conference_grab_ext.py
-```
-
-Возможности:
-
-- **continuous** — один большой файл
-- **segments** — нарезка в папку по N секунд
-- **stereo** — L = система, R = микрофон (удобно для постобработки)
-- **mix** — моно-микс
-- опциональный gate + pre/post-roll в режиме сегментов
-- voice boost на канале микрофона
-- поля **папка** / **файл** (базовое имя) / **полный путь**; при **Старт** в continuous к имени добавляется `YYYYMMDD-HH-MM-SS` перед расширением; смена формата меняет расширение
-
-Общие хелперы форматов: `audio_io.py`.
-
-## Сравнение
-
-| Подход | Файлы | Зрелость |
+| Задача | Команда | Документация |
 | --- | --- | --- |
-| WASAPI loopback | `recorder.py`, `grab.py`, `grab_gui.py` | основной |
-| Микрофон | `mic_recorder.py`, `mic_grab.py`, `mic_grab_gui.py` | основной |
-| Микрофон ext | `mic_recorder_ext.py`, `mic_grab_ext.py` | эксперимент |
-| Конференция ext | `conference_recorder_ext.py`, `conference_grab_ext.py` | эксперимент |
+| Системный звук | `python grab_gui.py` | [docs/02-system-audio.md](docs/02-system-audio.md) |
+| Микрофон | `python mic_grab_gui.py` | [docs/03-microphone.md](docs/03-microphone.md) |
+| Конференция (система + mic) | `python conference_grab_ext.py` | [docs/04-conference.md](docs/04-conference.md) |
+| Речь → текст | `python stt_grab_gui.py` | [docs/05-stt-gigaam.md](docs/05-stt-gigaam.md) |
+
+Полный индекс: [docs/README.md](docs/README.md). Примеры команд: [docs/examples/](docs/examples/).
+
+## Карта модулей
+
+| Область | Ядро | CLI / GUI |
+| --- | --- | --- |
+| System loopback | `recorder.py` | `grab.py`, `grab_gui.py` |
+| Микрофон | `mic_recorder.py` | `mic_grab.py`, `mic_grab_gui.py` |
+| Микрофон (сегменты, gate) | `mic_recorder_ext.py` | `mic_grab_ext.py` |
+| Конференция | `conference_recorder_ext.py` | `conference_grab_ext.py` |
+| STT | `stt_catalog.py`, `gigaam_stt.py`, `whisper_stt.py`, `vosk_stt.py` | `stt_grab.py`, `stt_grab_gui.py` |
+| LLM-правка текста | `llm_rewrite.py` | через STT GUI/CLI |
+
+Общие утилиты: `audio_io.py`. Установка и зависимости: [docs/01-install.md](docs/01-install.md).
 
 ## Ограничения
 
-- Ориентир — Windows.
-- Continuous в сжатых форматах (mp3/ogg/flac) копит до стопа — для длинных созвонов лучше `wav` или режим segments.
-- Неактивный loopback может «зависнуть» на чтении до стопа.
-- DRM может давать тишину в loopback.
+- Ориентир — Windows (WASAPI).
+- Неактивный loopback может «зависнуть» до стопа.
+- DRM иногда даёт тишину в loopback.
+- Веса моделей не в git — скачиваются отдельно (GigaAM / Whisper / Vosk).
 
-## Лицензия и использование
+## Лицензия
 
-Учебный/прототипный проект. Записывайте только звук, на который у вас есть права.
+Учебный/прототипный проект. Записывайте и распознавайте только контент, на который у вас есть права.

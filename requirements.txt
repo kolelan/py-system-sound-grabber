@@ -1,3 +1,11 @@
 PyAudioWPatch>=0.2.12.9
 numpy>=1.24
 soundfile>=0.12
+# STT (GigaAM-v3 ONNX CPU)
+onnxruntime>=1.16
+torch>=2.0
+torchaudio>=2.0
+pandas>=2.0
+huggingface_hub>=0.20
+faster-whisper>=1.0.3
+vosk>=0.3.45

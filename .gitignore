@@ -7,5 +7,7 @@ __pycache__/
 *.mp3
 mic_segments/
 conference_captures/
+models/
+_hf_cache_gigaam/
 .venv/
 venv/
